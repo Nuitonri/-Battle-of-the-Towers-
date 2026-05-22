@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Битва башен</title>
+<link href="https://fonts.googleapis.com/css2?family=MedievalSharp&display=swap" rel="stylesheet">
+
+<style>
+body{
+    font-family:'MedievalSharp', cursive;
+    background:#2b2b2b;
+    color:#f2f2f2;
+    text-align:center;
+}
+
+.panel{
+    margin:10px;
+    padding:12px;
+    border:3px solid #6e6e6e;
+    background:linear-gradient(145deg,#4b4b4b,#2f2f2f);
+    box-shadow: inset 0 0 10px black, 0 0 10px black;
+}
+
+button{
+    padding:10px;
+    margin:5px;
+    font-size:16px;
+    font-family:'MedievalSharp', cursive;
+    background:#5a5a5a;
+    color:white;
+    border:2px solid #999;
+    cursor:pointer;
+}
+
+button:hover{ background:#777; }
+
+.bar{
+    width:260px;
+    height:22px;
+    border:2px solid #aaa;
+    margin:5px auto;
+    background:#222;
+}
+
+.fill{height:100%;background:lime;width:100%;}
+.enemy{background:red;}
+
+#log{height:150px;overflow:auto;text-align:left;}
+.hidden{display:none;}
+</style>
+</head>
+<body>
+
+<h1>🏰 Битва башен</h1>
+
+<!-- МЕНЮ -->
+<div id="menu" class="panel">
+    <button onclick="showDifficulty()">Новая игра</button>
+    <button onclick="loadGame()">Продолжить</button>
+</div>
+
+<!-- СЛОЖНОСТЬ -->
+<div id="difficulty" class="panel hidden">
+    <h3>Выбери сложность</h3>
+    <button onclick="newGame('easy')">Лёгкая</button>
+    <button onclick="newGame('normal')">Средняя</button>
+    <button onclick="newGame('hard')">Сложная</button>
+    <button onclick="newGame('hardcore')">Хардкор</button>
+    <br><br>
+    <button onclick="backMenuOnly()">Назад</button>
+</div>
+
+<div id="game" class="hidden">
+
+<div class="panel">
+    <div>🟢 Твоя башня: <span id="myHpText"></span></div>
+    <div class="bar"><div id="myBar" class="fill"></div></div>
+
+    <div>🔴 Башня врага: <span id="enemyHpText"></span></div>
+    <div class="bar"><div id="enemyBar" class="fill enemy"></div></div>
+
+    <br>
+    ⚔️ Твой урон: <span id="damage"></span><br>
+    👿 Урон врага: <span id="enemyDamage"></span><br>
+    💰 Твоё золото: <span id="gold"></span><br>
+    🌊 Волна: <span id="wave"></span><br>
+    🧭 Сложность: <span id="diffText"></span>
+</div>
+
+<div class="panel">
+    <button id="btnDmg" onclick="upgradeDamage()"></button>
+    <button id="btnRepair" onclick="repairTower()"></button>
+    <button id="btnSuperRepair" onclick="superRepair()"></button>
+    <button id="btnSuperAttack" onclick="superAttack()"></button>
+    <button onclick="startBattle()">Начать бой</button>
+    <button onclick="truce()">🤝 Перемирие</button>
+    <button onclick="saveGame()">Сохранить</button>
+    <button onclick="backToMenu()">В меню</button>
+</div>
+
+<div class="panel" id="log"></div>
+</div>
+
+<script>
+const BASE_HP = 200;
+const BASE_PLAYER_DMG = 10;
+
+let difficultyMode = "normal";
+let enemyStartHp = 200;
+let enemyDamageMultiplier = 2;
+let priceMultiplier = 1;
+let hardcore = false;
+
+let playerMaxHp, enemyMaxHp;
+let myHp, enemyHp, damage, enemyDmg;
+let gold, wave;
+
+let limitDamage = 100;
+let limitHP = 1000;
+
+let fightInterval = null;
+
+/* ---------- UI ---------- */
+
+function log(t){
+    let div=document.getElementById("log");
+    div.innerHTML+=t+"<br>";
+    div.scrollTop=div.scrollHeight;
+}
+
+function updateBars(){
+    document.getElementById("myBar").style.width=(myHp/playerMaxHp*100)+"%";
+    document.getElementById("enemyBar").style.width=(enemyHp/enemyMaxHp*100)+"%";
+}
+
+function updatePrices(){
+    document.getElementById("btnDmg").innerText = "Улучшить урон ("+(60*priceMultiplier)+")";
+    document.getElementById("btnRepair").innerText = "Починить ("+(40*priceMultiplier)+")";
+    document.getElementById("btnSuperRepair").innerText = "🛡 Супер починка ("+(120*priceMultiplier)+")";
+    document.getElementById("btnSuperAttack").innerText = "💥 Супер атака ("+(500*priceMultiplier)+")";
+}
+
+function updateUI(){
+    document.getElementById("myHpText").innerText=myHp+" / "+playerMaxHp;
+    document.getElementById("enemyHpText").innerText=enemyHp+" / "+enemyMaxHp;
+    document.getElementById("damage").innerText=damage;
+    document.getElementById("enemyDamage").innerText=enemyDmg;
+    document.getElementById("gold").innerText=gold;
+    document.getElementById("wave").innerText=wave;
+    document.getElementById("diffText").innerText=difficultyMode;
+    updateBars();
+    updatePrices();
+}
+
+/* ---------- МЕНЮ ---------- */
+
+function showDifficulty(){
+    document.getElementById("menu").classList.add("hidden");
+    document.getElementById("difficulty").classList.remove("hidden");
+}
+
+function backMenuOnly(){
+    document.getElementById("difficulty").classList.add("hidden");
+    document.getElementById("menu").classList.remove("hidden");
+}
+
+/* ---------- НОВАЯ ИГРА ---------- */
+
+function newGame(mode){
+
+    difficultyMode = mode;
+    hardcore = false;
+    priceMultiplier = 1;
+
+    if(mode==="easy"){
+        enemyStartHp = 150;
+        enemyDamageMultiplier = 1;
+    }
+    else if(mode==="normal"){
+        enemyStartHp = 200;
+        enemyDamageMultiplier = 2;
+    }
+    else if(mode==="hard"){
+        enemyStartHp = 300;
+        enemyDamageMultiplier = 2.5;
+    }
+    else if(mode==="hardcore"){
+        enemyStartHp = 350;
+        enemyDamageMultiplier = 3;
+        priceMultiplier = 2;
+        hardcore = true;
+    }
+
+    playerMaxHp = BASE_HP;
+    enemyMaxHp = enemyStartHp;
+
+    myHp = playerMaxHp;
+    enemyHp = enemyMaxHp;
+
+    damage = BASE_PLAYER_DMG;
+    enemyDmg = 10;
+
+    gold = 0;
+    wave = 1;
+
+    clearInterval(fightInterval);
+    fightInterval = null;
+
+    document.getElementById("difficulty").classList.add("hidden");
+    document.getElementById("game").classList.remove("hidden");
+
+    document.getElementById("log").innerHTML="";
+    log("🆕 Новая игра!");
+    updateUI();
+}
+
+/* ---------- ПОКУПКИ ---------- */
+
+function upgradeDamage(){
+    let cost = 60 * priceMultiplier;
+    if(gold<cost){ log("❌ Нужно "+cost); return; }
+    if(damage>=limitDamage){ log("🚫 Предел"); return; }
+
+    gold-=cost;
+    damage+=5;
+    updateUI();
+}
+
+function repairTower(){
+    let cost = 40 * priceMultiplier;
+
+    if(myHp >= playerMaxHp && playerMaxHp >= limitHP){
+        log("🚫 Предел HP");
+        return;
+    }
+
+    if(gold < cost){ log("❌ Нужно "+cost); return; }
+
+    gold -= cost;
+
+    if(myHp >= playerMaxHp){
+        playerMaxHp = Math.min(limitHP, playerMaxHp + 20);
+        myHp = playerMaxHp;
+    } else {
+        myHp = Math.min(playerMaxHp, myHp + 40);
+    }
+
+    updateUI();
+}
+
+function superRepair(){
+    let cost = 120 * priceMultiplier;
+    if(myHp >= playerMaxHp){ log("🚫 Полное HP"); return; }
+    if(gold < cost){ log("❌ Нужно "+cost); return; }
+
+    gold -= cost;
+    myHp = playerMaxHp;
+    updateUI();
+}
+
+function superAttack(){
+    let cost = 500 * priceMultiplier;
+    if(!fightInterval){ log("⚠️ Только в бою"); return; }
+    if(gold < cost){ log("❌ Нужно "+cost); return; }
+
+    gold -= cost;
+    enemyHp -= 150;
+    if(enemyHp<0) enemyHp=0;
+    updateUI();
+}
+
+/* ---------- БОЙ ---------- */
+
+function startBattle(){
+    if(fightInterval) return;
+
+    fightInterval=setInterval(()=>{
+
+        enemyHp -= damage;
+        if(enemyHp < 0) enemyHp = 0;
+        gold += damage * 5;
+
+        let multiplier = enemyDamageMultiplier;
+
+        if(difficultyMode!=="easy" && playerMaxHp >= limitHP){
+            multiplier = 10;
+        }
+
+        myHp -= enemyDmg * multiplier;
+        if(myHp < 0) myHp = 0;
+
+        updateUI();
+
+        if(myHp<=0){
+            clearInterval(fightInterval);
+            fightInterval=null;
+
+            if(hardcore){
+                localStorage.removeItem("towerSave");
+                setTimeout(()=>location.reload(),500);
+                return;
+            }
+
+            setTimeout(()=>{ myHp = playerMaxHp; updateUI(); },1000);
+        }
+
+        if(enemyHp<=0){
+            clearInterval(fightInterval);
+            fightInterval=null;
+            enemyMaxHp += 20;
+            enemyHp = enemyMaxHp;
+            wave++;
+            updateUI();
+        }
+
+    },1000);
+}
+
+function truce(){
+    if(!fightInterval) return;
+    clearInterval(fightInterval);
+    fightInterval=null;
+}
+
+/* ---------- СОХРАНЕНИЕ (ПОЛНОСТЬЮ ПОЧИНЕНО) ---------- */
+
+function saveGame(){
+    if(hardcore){ log("🚫 В хардкоре нельзя"); return; }
+
+    const save={
+        difficultyMode,enemyStartHp,enemyDamageMultiplier,
+        priceMultiplier,hardcore,
+        playerMaxHp,enemyMaxHp,myHp,enemyHp,
+        damage,enemyDmg,gold,wave
+    };
+
+    localStorage.setItem("towerSave", JSON.stringify(save));
+    log("💾 Сохранено");
+}
+
+function loadGame(){
+    const raw = localStorage.getItem("towerSave");
+    if(!raw){ alert("Нет сохранения"); return; }
+
+    const s = JSON.parse(raw);
+
+    difficultyMode=s.difficultyMode;
+    enemyStartHp=s.enemyStartHp;
+    enemyDamageMultiplier=s.enemyDamageMultiplier;
+    priceMultiplier=s.priceMultiplier;
+    hardcore=s.hardcore;
+
+    playerMaxHp=s.playerMaxHp;
+    enemyMaxHp=s.enemyMaxHp;
+    myHp=s.myHp;
+    enemyHp=s.enemyHp;
+
+    damage=s.damage;
+    enemyDmg=s.enemyDmg;
+    gold=s.gold;
+    wave=s.wave;
+
+    clearInterval(fightInterval);
+    fightInterval=null;
+
+    document.getElementById("menu").classList.add("hidden");
+    document.getElementById("difficulty").classList.add("hidden");
+    document.getElementById("game").classList.remove("hidden");
+
+    document.getElementById("log").innerHTML="";
+
+    log("📂 Сохранение загружено");
+    updateUI();
+}
+
+/* ---------- ПРОЧЕЕ ---------- */
+
+function backToMenu(){
+    clearInterval(fightInterval);
+    fightInterval=null;
+    document.getElementById("game").classList.add("hidden");
+    document.getElementById("menu").classList.remove("hidden");
+}
+</script>
+
+</body>
+</html>
